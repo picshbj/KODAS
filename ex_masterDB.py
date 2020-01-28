@@ -9,8 +9,8 @@ settings['SETTING_DMI'] = True
 
 if __name__ == '__main__':
     # init data
-    datfile = 'NsuMDB_01_2018Y08M08D18H18m14s.dat'
-    Master = cMasterDB(settings, datfile)
+    filename = 'NsuMDB_01_2018Y08M08D18H18m14s.dat'
+    Master = CMasterDB(settings, filename)
 
     # get header
     header = Master.header

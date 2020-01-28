@@ -37,8 +37,8 @@ def setParams():
 if __name__ == '__main__':
     # init data
     params = setParams()
-    datfile = 'Camera_FrontLeft_01_2018Y08M08D18H18m14s.dat'
-    cam = cCameraFrame(settings, datfile, params[0], 'output', 'FrontLeft')
+    datfile = 'BSDCAM_L_00_2019Y11M25D15H41m15s_FC.dat'
+    cam = CCameraFrame(settings, datfile, params[0], 'output', 'FrontLeft')
     
     # get header
     header = cam.header
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     # convert raw data to readable data
     # when you call this function, you'll lose current frame pointer.
     # Do not call this function with getNextFrame function at the same time.
-    cam.convertAll()
+    # cam.convertAll()
 
     # free memory
     del cam
@@ -57,9 +57,9 @@ if __name__ == '__main__':
     #######################################################################
 
     # init data 
-    cam = cCameraFrame(settings, datfile, params[0], 'output', 'FrontLeft')
+    # cam = CCameraFrame(settings, datfile, params[0], 'output', 'FrontLeft')
     
-    # read frame by frame
-    while not cam.EOF:
-        frame = cam.getNextFrame()
-        # write your code here..
+    # # read frame by frame
+    # while not cam.EOF:
+    #     frame = cam.getNextFrame()
+    #     # write your code here..

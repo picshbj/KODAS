@@ -1,9 +1,18 @@
+# Written by Jeffrey Hong <hbj723@kitech.re.kr>
+# last revision: 2019.07.31
+
+# Modified by Jeffrey Hong on 2019.07.31 [Bug fix] 
+# 1. [Function] CCameraFrame.getNextFrame : EOF Detection
+# 2. [Function] CCameraFrame.convertAll : Bug Fix
+# 3. [Module  ] LIDAR2CAM_Projection_py36 : Removed
+
+# Note: KODAS API for Camera Data
+
 import struct
 import cv2
 import numpy as np
 import os
 from DefinedNaviSensConst_py36 import *
-from LIDAR2CAM_Projection_py36 import *
 
 DEBUG = True
 DEBUG = False
@@ -13,8 +22,8 @@ HEADER_BITMAPINFOHEADER = 'I2l2H2I2l2I'
 
 SIZE_HEADER_CAMERA = struct.calcsize(HEADER_CAMERA)
 SIZE_HEADER_BITMAPINFOHEADER = struct.calcsize(HEADER_BITMAPINFOHEADER)
-        
-class sBITMAPINFOHEADER():
+
+class SBITMAPINFOHEADER():
     def __init__(self, BITHEAD):
         # parsing BITMAPINFOHEADER
         if len(BITHEAD) is not SIZE_HEADER_BITMAPINFOHEADER:
@@ -51,7 +60,7 @@ class sBITMAPINFOHEADER():
         except AttributeError:
             print ('Header is not exist.')
 
-class sCameraHeader():
+class SCameraHeader():
     def __init__(self, CAMHEAD):
         # parsing Camera Data
         if len(CAMHEAD) is not SIZE_HEADER_CAMERA+SIZE_HEADER_BITMAPINFOHEADER:
@@ -67,18 +76,18 @@ class sCameraHeader():
             self.cameraName = headerData[11].decode('utf-8')
             self.cameraSerialNo = headerData[12].decode('utf-8')
             self.imageDataVersion = headerData[13]
-            self.ImageDataHeader = sBITMAPINFOHEADER(CAMHEAD[-40:])
+            self.ImageDataHeader = SBITMAPINFOHEADER(CAMHEAD[-40:])
             self.frameStatus = True
         
-        with open('imageHeader.txt', 'w') as fout:
-            fout.write('Data File Version : 0x%08X\n' % (self.dataFileVersion))
-            fout.write('Data Save Time : 20%02d-%02d-%02d - %02dh%02dm%02d.%ds\n' % (self.dataSaveTime[0], self.dataSaveTime[1], self.dataSaveTime[2], self.dataSaveTime[3]+9, self.dataSaveTime[4], self.dataSaveTime[5], self.dataSaveTime[6]))
-            fout.write('INS Info Version : 0x%08X\n' % (self.INSInfoVersion))
-            fout.write('INS Info Size : %i\n' % (self.INSInfoSize))
-            fout.write('Camera ID : %i\n' % (self.cameraID))
-            fout.write('Camera Name : %s\n' % (self.cameraName))
-            fout.write('Camera Serial Number : %s\n' % (self.cameraSerialNo))
-            fout.write('Image Data Version : 0x%08X\n' % (self.imageDataVersion))
+        # with open('imageHeader.txt', 'w') as fout:
+        #     fout.write('Data File Version : 0x%08X\n' % (self.dataFileVersion))
+        #     fout.write('Data Save Time : 20%02d-%02d-%02d - %02dh%02dm%02d.%ds\n' % (self.dataSaveTime[0], self.dataSaveTime[1], self.dataSaveTime[2], self.dataSaveTime[3]+9, self.dataSaveTime[4], self.dataSaveTime[5], self.dataSaveTime[6]))
+        #     fout.write('INS Info Version : 0x%08X\n' % (self.INSInfoVersion))
+        #     fout.write('INS Info Size : %i\n' % (self.INSInfoSize))
+        #     fout.write('Camera ID : %i\n' % (self.cameraID))
+        #     fout.write('Camera Name : %s\n' % (self.cameraName))
+        #     fout.write('Camera Serial Number : %s\n' % (self.cameraSerialNo))
+        #     fout.write('Image Data Version : 0x%08X\n' % (self.imageDataVersion))
 
     def printHeader(self):
         try:
@@ -95,7 +104,7 @@ class sCameraHeader():
         except AttributeError:
             print ('Header is not exist.')
 
-class sCameraData():
+class SCameraData():
     def __init__(self, settings, CAM, header, params):
         self.settings = settings
         if len(CAM) != (72+header.ImageDataHeader.biSizeImage):
@@ -108,7 +117,7 @@ class sCameraData():
             frameData = struct.unpack('2I', CAM[0:8])
             self.sequencCount = frameData[0]
             self.saveInterval = frameData[1]
-            self.INSData = sINSData(CAM[8:72])
+            self.INSData = SINSData(CAM[8:72])
             # header.ImageDataHeader.printHeader()
             b = int(len(CAM[72:])/(h*w))
             # print('%d = %dx%d, %d' % (len(CAM[72:]), h, w, b))            
@@ -129,7 +138,7 @@ class sCameraData():
     
 
 
-class cCameraFrame():
+class CCameraFrame():
     def __init__(self, settings, fileName, params, path, cameraName):
         self.settings = settings 
         
@@ -140,14 +149,14 @@ class cCameraFrame():
         self.path = path
         self.cameraName = cameraName
         self.params = params
-
+        self.fileCount = 0
         self.EOF = False
 
         if not os.path.isdir(path):
             os.mkdir(path)
 
         # read header and register
-        self.header = sCameraHeader(self.dataFile.read(SIZE_HEADER_CAMERA+SIZE_HEADER_BITMAPINFOHEADER))    # read 132 bytes for camera data header
+        self.header = SCameraHeader(self.dataFile.read(SIZE_HEADER_CAMERA+SIZE_HEADER_BITMAPINFOHEADER))    # read 132 bytes for camera data header
         # self.printHeader()
         # read data frame and register
                   
@@ -169,16 +178,16 @@ class cCameraFrame():
     
     def getNextFrame(self):
         frameData = self.dataFile.read(72+self.header.ImageDataHeader.biSizeImage)
-        if frameData == b'':
+        frame = SCameraData(self.settings, frameData, self.header, self.params)
+
+        if frameData == b'\xff\xff\xff\xff\xff\xff\xff\xff':
             self.EOF = True
             try:
-                dataFile.close()
+                self.dataFile.close()
             except Exception as e:
                 pass
-            return False
-        else:
-            frame = sCameraData(self.settings, frameData, self.header, self.params)
-            return frame
+            
+        return frame
 
     def drawBox(self, frame, frameIndex):
         iObjIndex = self.findFrameIndex(frame.INSData.getTime())
@@ -200,35 +209,32 @@ class cCameraFrame():
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
     def convertAll(self):
-        cnt = 1
         while not self.EOF:
-            frame = self.getNextFrame()    
-            if frame.frameStatus is True:
-                self.convert(self.path+'\\'+self.cameraName, cnt, frame)
-                cnt = cnt+1
+            frame = self.getNextFrame()
+            if frame.frameStatus:
+                self.convert(self.path+'\\'+self.cameraName, frame)
 
-    def convert(self, path, cnt, image):
+    def convert(self, path, image):
         if not os.path.isdir(path):
             os.mkdir(path)
         
         logFile = open(path+'\\'+self.cameraName+'.txt', 'a')
         
         # Save log
-        data = '%06d %d %d %d %s %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n' % (cnt, image.saveInterval, image.INSData.dwDevStatus, image.INSData.nUpdateCount, image.INSData.getTime(), image.INSData.afVelocity[0], image.INSData.afVelocity[1], image.INSData.afVelocity[2], image.INSData.afOrient[0], image.INSData.afOrient[1], image.INSData.afOrient[2], image.INSData.adPosition[0], image.INSData.adPosition[1], image.INSData.adPosition[2])
+        data = '%06d %d %d %d %s %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n' % (self.fileCount, image.saveInterval, image.INSData.dwDevStatus, image.INSData.nUpdateCount, image.INSData.getTime(), image.INSData.afVelocity[0], image.INSData.afVelocity[1], image.INSData.afVelocity[2], image.INSData.afOrient[0], image.INSData.afOrient[1], image.INSData.afOrient[2], image.INSData.adPosition[0], image.INSData.adPosition[1], image.INSData.adPosition[2])
         logFile.write(data)
 
         # draw box
         # self.drawBox(image, cnt)
 
         # Save as Image
-        filename = '%s\\%06d.jpg' % (path, cnt)
+        filename = '%s\\%06d.jpg' % (path, self.fileCount)
         cv2.imwrite(filename, image.image)
+
+        self.fileCount = self.fileCount+1
 
 
         logFile.close()
 
     def printHeader(self):
         self.header.printHeader()
-
-    def writeConvertedImageToDatFile(self):
-        pass

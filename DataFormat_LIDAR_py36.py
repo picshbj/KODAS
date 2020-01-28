@@ -1,3 +1,12 @@
+# Written by Jeffrey Hong <hbj723@kitech.re.kr>
+# last revision: 2019.07.31
+
+# Modified by Jeffrey Hong on 2019.07.31 [Bug fix] 
+# 1. [Function] CLIdarFrame.getNextFrame : EOF Detection
+# 2. [Function] CLIdarFrame.convertAll : Bug Fix
+
+# Note: KODAS API for LIDAR Data
+
 import struct
 import cv2
 import numpy as np
@@ -18,14 +27,14 @@ SIZE_HEADER_LIDARMEASUREDATA = struct.calcsize(HEADER_LIDARMEASUREDATA)
 SIZE_PCDDATA = struct.calcsize(PCDDATA)
 
 
-class sLidarSensorInfoHeader():
+class SLidarSensorInfoHeader():
     def __init__(self, HEADER):
         self.LidarSensorInfoHeader = struct.unpack(HEADER_LIDAR_SENSOR_INFO, HEADER)
         # parsing LIDAR sensor info header
     def printHeader(self):
         print ('Lidar Sensor Info Header : %s' % (self.LidarSensorInfoHeader))
         
-class sLidarHeader():
+class SLidarHeader():
     def __init__(self, LIDARHEAD):
         # parsing LIDAR Header
         if len(LIDARHEAD) != SIZE_HEADER_LIDAR+SIZE_HEADER_LIDAR_SENSOR_INFO:
@@ -40,7 +49,7 @@ class sLidarHeader():
             self.LidarID = headerData[10]
             self.LidarModelName = headerData[11].decode('utf-8')
             self.LidarSerialNo = headerData[12].decode('utf-8')
-            self.LidarSensorInfoHeader = sLidarSensorInfoHeader(LIDARHEAD[SIZE_HEADER_LIDAR:])
+            self.LidarSensorInfoHeader = SLidarSensorInfoHeader(LIDARHEAD[SIZE_HEADER_LIDAR:])
             self.frameStatus = True
 
     def printHeader(self):
@@ -57,7 +66,7 @@ class sLidarHeader():
         except AttributeError:
             print ('Header is not exist.')
 
-class sLidarMeasureData():
+class SLidarMeasureData():
     def __init__(self, HEAD):
         # parsing BITMAPINFOHEADER
         if len(HEAD) is not SIZE_HEADER_LIDARMEASUREDATA:
@@ -87,7 +96,7 @@ class sLidarMeasureData():
         except AttributeError:
             print ('Header is not exist.')
 
-class sPcdData():
+class SPcdData():
     def __init__(self, DATA):
         if len(DATA) != SIZE_PCDDATA:
             if(DEBUG): print ('Input pcd data is not valid. Input data size is %dbytes, expected %d bytes' % (len(Data), SIZE_PCDDATA))
@@ -105,7 +114,7 @@ class sPcdData():
     def printPcdData(self):
         print('(%d, %d, %d), (%d, %d), (%d, %d, %d)' % (self.nx, self.ny, self.nz, self.ni, self.ne, self.wh, self.wv, self.wr))
 
-class sLidarData():
+class SLidarData():
     def __init__(self, LIDAR):
         if len(LIDAR) != 104:
             if(DEBUG): print ('Input Lidar data is not valid. Input data size is %dbytes, expected 104 bytes' % (len(LIDAR)))
@@ -114,8 +123,8 @@ class sLidarData():
             frameData = struct.unpack('2I', LIDAR[0:8])
             self.sequencCount = frameData[0]
             self.saveInterval = frameData[1]
-            self.INSData = sINSData(LIDAR[8:72])
-            self.dataHeader = sLidarMeasureData(LIDAR[72:])
+            self.INSData = SINSData(LIDAR[8:72])
+            self.dataHeader = SLidarMeasureData(LIDAR[72:])
             self.pcdData = []
             self.frameStatus = True
 
@@ -124,64 +133,50 @@ class sLidarData():
         for data in unpackData:
             self.pcdData.append(data)
 
-class cLidarFrame():
-    def __init__(self, settings, fileName, path):
+class CLidarFrame():
+    def __init__(self, fileName, path):
         # open file
-        dataFile = open(fileName, 'rb')
+        self.dataFile = open(fileName, 'rb')
 
         # read header and register
         try:
-            self.header = sLidarHeader(dataFile.read(SIZE_HEADER_LIDAR+SIZE_HEADER_LIDAR_SENSOR_INFO))    # read 132 bytes for Lidar data header
+            self.header = SLidarHeader(self.dataFile.read(SIZE_HEADER_LIDAR+SIZE_HEADER_LIDAR_SENSOR_INFO))    # read 132 bytes for Lidar data header
         except UnicodeDecodeError:
             print('Header parsing failed.')
             
         # read data frame and register
         self.dataFrames = []
         self.fileCount = 0
-        cnt = 0
-        while True:            
-            frameData = dataFile.read(104)
-            if frameData == b'':
-                break
-
-            frame = sLidarData(frameData)
-            if frame.frameStatus is True:
-                pcdData = dataFile.read(SIZE_PCDDATA*frame.dataHeader.dwMeasurePcdCounts)
-                frame.getPCDfrombinary(pcdData)
-                # self.dataFrames.append(frame)
-                self.convert(path, frame)
-
-        # file close
-        dataFile.close()
-
-    def convertAll(self, path):
+        self.EOF = False
+        self.path = path
+    
         if not os.path.isdir(path):
             os.mkdir(path)
-        
-        logFile = open(path+'\\log.txt', 'w')
-        for lidar in self.dataFrames:
-            # Save log
-            data =  '%06d.txt %s %d %d %d\n' % (lidar.dataHeader.dwMeasureCounter, lidar.INSData.getTime(), lidar.INSData.nUpdateCount, lidar.sequencCount, lidar.saveInterval)
-            logFile.write(data)
+    
+    def getNextFrame(self):
+        frameData = self.dataFile.read(104)
+        frame = SLidarData(frameData)
 
-            # Save as Lidar data
-            filename = '%s\\%06d.txt' % (path, lidar.dataHeader.dwMeasureCounter)
-            lidarData = open(filename, 'w')
-            for pcd in lidar.pcdData:
-                saveData = '%d %d %d %d %d %d %d %d\n' % (pcd[0], pcd[1], pcd[2], pcd[3], pcd[4], pcd[5], pcd[6], pcd[7])
-                lidarData.write(saveData)
-            lidarData.close()
-        logFile.close()
-
-    def convert(self, path, lidar):
-        if not os.path.isdir(path):
-            os.mkdir(path)
+        if frameData == b'\xff\xff\xff\xff\xff\xff\xff\xff':
+            self.EOF = True
+            self.dataFile.close()
+        elif frame.frameStatus is True:
+            pcdData = self.dataFile.read(SIZE_PCDDATA*frame.dataHeader.dwMeasurePcdCounts)
+            frame.getPCDfrombinary(pcdData)
         
+        return frame
+        
+    def convertAll(self):
+        while not self.EOF:
+            frame = self.getNextFrame()
+            if frame.frameStatus:
+                self.convert(self.path, frame)
+            
+
+    def convert(self, path, lidar):        
         logFile = open(path+'\\log.txt', 'a')
         
-
         # Save log
-        # data =  '%06d.txt %s %d %d %d\n' % (lidar.dataHeader.dwMeasureCounter, lidar.INSData.getTime(), lidar.INSData.nUpdateCount, lidar.sequencCount, lidar.saveInterval)
         data =  '%06d.txt %s %d %d %d\n' % (self.fileCount, lidar.INSData.getTime(), lidar.INSData.nUpdateCount, lidar.sequencCount, lidar.saveInterval)
         logFile.write(data)
 
@@ -191,9 +186,9 @@ class cLidarFrame():
         for pcd in lidar.pcdData:
             saveData = '%d %d %d %d %d %d %d %d\n' % (pcd[0], pcd[1], pcd[2], pcd[3], pcd[4], pcd[5], pcd[6], pcd[7])
             lidarData.write(saveData)
+        
         lidarData.close()
         logFile.close()
-        print(self.fileCount)
         self.fileCount = self.fileCount+1
 
     def printHeader(self):

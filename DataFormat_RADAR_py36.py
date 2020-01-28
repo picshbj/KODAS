@@ -1,3 +1,15 @@
+# Written by Jeffrey Hong <hbj723@kitech.re.kr>
+# last revision: 2019.07.31
+# 
+# Modified by Jeffrey Hong on 2019.07.31 [Bug fix] 
+# 1. [Variable Definition] HEADER_RADAR: 'I6BIiI32s32s' -> 'I6BHIiI32s32s'
+# 2. [Function           ] SRadarHeader.__init__ : Header initialization
+# 3. [Function           ] CRadarFrame.getNextFrame : EOF Detection
+# 4. [Function           ] CRadarFrame.convertAll : Bug Fix
+
+# Note: KODAS API for RADAR Data
+#		This API support currently version 1 only.
+
 import struct
 import cv2
 import numpy as np
@@ -7,7 +19,7 @@ from DefinedNaviSensConst_py36 import *
 DEBUG = True
 DEBUG = False
 
-HEADER_RADAR = 'I6BIiI32s32s'
+HEADER_RADAR = 'I6BHIiI32s32s'
 HEADER_RADAR_SENSOR_INFO = '28s'
 HEADER_RADARMEASUREDATA = 'IQ2H2BHh2H2f'
 RADARTRACKMSG = '8B8f'
@@ -18,14 +30,17 @@ SIZE_HEADER_RADARMEASUREDATA = struct.calcsize(HEADER_RADARMEASUREDATA)
 SIZE_RADARTRACKMSG = struct.calcsize(RADARTRACKMSG)
 
 
-class sRadarSensorInfoHeader():
+class SRadarSensorInfoHeader():
 	def __init__(self, HEADER):
-		self.RadarSensorInfoHeader = struct.unpack(HEADER_RADAR_SENSOR_INFO, HEADER)
-		# parsing RADAR sensor info header
+		if len(HEADER) != SIZE_HEADER_RADAR_SENSOR_INFO:
+			if(DEBUG): print ('Input HEADER_RADAR_SENSOR_INFO data is not valid. Input data size is %d' % SIZE_HEADER_RADAR_SENSOR_INFO)
+		else:
+			self.RadarSensorInfoHeader = struct.unpack(HEADER_RADAR_SENSOR_INFO, HEADER)
+			# parsing RADAR sensor info header
 	def printHeader(self):
 		print ('Radar Sensor Info Header : %s' % (self.RadarSensorInfoHeader))
 
-class sRadarHeader():
+class SRadarHeader():
 	def __init__(self, RADARHEAD):
 		# parsing RADAR Header
 		if len(RADARHEAD) != SIZE_HEADER_RADAR+SIZE_HEADER_RADAR_SENSOR_INFO:
@@ -34,13 +49,13 @@ class sRadarHeader():
 		else:
 			headerData = struct.unpack(HEADER_RADAR, RADARHEAD[:SIZE_HEADER_RADAR])
 			self.dataSaveVersion = headerData[0]
-			self.dataSaveTime = headerData[0:7]
-			self.INSInfoVersion = headerData[7]
-			self.INSInfoSize = headerData[8]
-			self.RadarID = headerData[9]
-			self.RadarModelName = headerData[10].decode('utf-8')
-			self.RadarSerialNo = headerData[11].decode('utf-8')
-			self.RadarSensorInfoHeader = sRadarSensorInfoHeader(RADARHEAD[SIZE_HEADER_RADAR:])
+			self.dataSaveTime = headerData[1:8]
+			self.INSInfoVersion = headerData[8]
+			self.INSInfoSize = headerData[9]
+			self.RadarID = headerData[10]
+			self.RadarModelName = headerData[11].decode('utf-8')
+			self.RadarSerialNo = headerData[12].decode('utf-8')
+			self.RadarSensorInfoHeader = SRadarSensorInfoHeader(RADARHEAD[SIZE_HEADER_RADAR:])
 			self.frameStatus = True
 
 	def printHeader(self):
@@ -57,7 +72,7 @@ class sRadarHeader():
 		except AttributeError:
 			print ('Header is not exist.')
 
-class sRadarMeasureData():
+class SRadarMeasureData():
 	def __init__(self, HEAD):
 		# parsing BITMAPINFOHEADER
 		if len(HEAD) is not SIZE_HEADER_RADARMEASUREDATA:
@@ -69,7 +84,7 @@ class sRadarMeasureData():
 			self.qwTimeStamp = headerData[1]
 			self.wScanIndex = headerData[2]
 			self.wTrackNo = headerData[3]
-			#sRADAR_STATUS_MSG
+			#SRADAR_STATUS_MSG
 			self.bRollingCount1 = headerData[4]
 			self.bCommError = headerData[5]
 			self.wDspTimeStamp = headerData[6]
@@ -89,7 +104,7 @@ class sRadarMeasureData():
 		except AttributeError:
 			print ('Header is not exist.')
 
-class sRADARTRACKMSG():
+class SRADARTRACKMSG():
 	def __init__(self, DATA):
 		if len(DATA) != SIZE_RADARTRACKMSG:
 			if(DEBUG): print ('Input Radar Track data is not valid. Input data size is %dbytes, expected %d bytes' % (len(Data), SIZE_RADARTRACKMSG))
@@ -122,7 +137,7 @@ class sRADARTRACKMSG():
 		print('fRangeAccel' % (self.fRangeAccel))
 		print('fRangeRate' % (self.fRangeRate))
 
-class sRadarData():
+class SRadarData():
 	def __init__(self, RADAR):
 		if len(RADAR) != 112:
 			if(DEBUG): print ('Input Radar data is not valid. Input data size is %dbytes, expected 110 bytes' % (len(RADAR)))
@@ -131,8 +146,8 @@ class sRadarData():
 			frameData = struct.unpack('2I', RADAR[0:8])
 			self.SOF = frameData[0]
 			self.saveInterval = frameData[1]
-			self.INSData = sINSData(RADAR[8:72])
-			self.dataHeader = sRadarMeasureData(RADAR[72:])
+			self.INSData = SINSData(RADAR[8:72])
+			self.dataHeader = SRadarMeasureData(RADAR[72:])
 			self.RADARTRACKMSG = []
 			self.frameStatus = True
 
@@ -141,38 +156,47 @@ class sRadarData():
 		for data in unpackData:
 			self.RADARTRACKMSG.append(data)
 
-class cRadarFrame():
-	def __init__(self, settings, fileName, path):
+class CRadarFrame():
+	def __init__(self, fileName, path):
 		# open file
-		dataFile = open(fileName, 'rb')
+		self.dataFile = open(fileName, 'rb')
+
 		# read header and register
 		try:
-			self.header = sRadarHeader(dataFile.read(SIZE_HEADER_RADAR+SIZE_HEADER_RADAR_SENSOR_INFO))    # read 116 bytes for Radar data header
+			self.header = SRadarHeader(self.dataFile.read(SIZE_HEADER_RADAR+SIZE_HEADER_RADAR_SENSOR_INFO))    # read 116 bytes for Radar data header
 		except UnicodeDecodeError:
 			print('Header parsing failed.')
 
 		# read data frame and register
 		self.fileCount = 0
-		cnt = 0
-		while True:
-			frameData = dataFile.read(112)
-			frame = sRadarData(frameData)
-			if frame.frameStatus is True:
-				RADARTRACKMSG = dataFile.read(SIZE_RADARTRACKMSG*64)
-				if RADARTRACKMSG == b'':
-					break
-				frame.getMeasurementDatafrombinary(RADARTRACKMSG)
-				# self.convert(path, frame)
+		self.EOF = False
+		self.path = path
 
-		# file close
-		dataFile.close()
-
-	def convert(self, path, Radar):
 		if not os.path.isdir(path):
 			os.mkdir(path)
 
-		logFile = open(path+'\\log.txt', 'a')
+	def getNextFrame(self):
+		frameData = self.dataFile.read(112)
+		frame = SRadarData(frameData)
+		
+		if frameData == b'\xff\xff\xff\xff\xff\xff\xff\xff':
+			self.EOF = True
+			self.dataFile.close()
+		else:
+			RADARTRACKMSG = self.dataFile.read(SIZE_RADARTRACKMSG*64)
+			frame.getMeasurementDatafrombinary(RADARTRACKMSG)
 
+		return frame
+
+	def convertAll(self):
+		while not self.EOF:
+			frame = self.getNextFrame()
+			if frame.frameStatus:
+				self.convert(self.path, frame)
+
+
+	def convert(self, path, Radar):
+		logFile = open(path+'\\log.txt', 'a')
 
 		# Save log
 		# data =  '%06d.txt %s %d %d %d\n' % (Radar.dataHeader.dwMeasureCounter, Radar.INSData.getTime(), Radar.INSData.nUpdateCount, Radar.sequencCount, Radar.saveInterval)
@@ -183,11 +207,12 @@ class cRadarFrame():
 		filename = '%s\\%06d.txt' % (path, self.fileCount)
 		RadarData = open(filename, 'w')
 		for measurement in Radar.RADARTRACKMSG:
-			saveData = '%d %d %f %f %f %f %f %f\n' % (measurement.bID, measurement.bStatus, measurement.fAmplitude, measurement.fAngle, measurement.fRange, measurement.fWidth, measurement.fRangeAccel, measurement.fRangeRate)
+			# saveData = '%d %d %f %f %f %f %f %f\n' % (measurement.bID, measurement.bStatus, measurement.fAmplitude, measurement.fAngle, measurement.fRange, measurement.fWidth, measurement.fRangeAccel, measurement.fRangeRate)
+			saveData = '%d %d %d %d %d %d %d %d %f %f %f %f %f %f %f %f\n' % (measurement[0], measurement[1], measurement[2], measurement[3], measurement[4], measurement[5], measurement[6], measurement[7], measurement[8], measurement[9], measurement[10], measurement[11], measurement[12], measurement[13], measurement[14], measurement[15])
 			RadarData.write(saveData)
 		RadarData.close()
 		logFile.close()
-		print(self.fileCount)
+		# print(self.fileCount)
 		self.fileCount = self.fileCount+1
 
 	def printHeader(self):

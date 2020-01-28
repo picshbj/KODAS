@@ -1,3 +1,12 @@
+# Written by Jeffrey Hong <hbj723@kitech.re.kr>
+# last revision: 2019.07.31
+# 
+# Modified by Jeffrey Hong on 2019.07.31 [Bug fix] 
+# 1. [Variable Definition] OBDTYPE: 'I12H7f6BH' -> 'I10HhH7f6BH'
+#    - Steering Angle Data Type is INT16 but it was UINT16
+
+# Note: KODAS API for Master and Object Data
+
 import struct
 from GPSTranslation import *
 import os
@@ -10,7 +19,7 @@ FRAMEHEADERTYPE = '2I'
 INSTYPE = '2i6BH6f3d'
 GPSTYPE = '2I6BH3d13fI'
 # OBDTYPE = '3I5f6BH'
-OBDTYPE = 'I12H7f6BH'
+OBDTYPE = 'I10HhH7f6BH'
 DMITYPE = '2I4l6BH'
 
 HEADERSIZE = struct.calcsize(HEADERTYPE)
@@ -21,7 +30,7 @@ DMISIZE = struct.calcsize(DMITYPE)
 FRAMEHEADERSIZE = struct.calcsize(FRAMEHEADERTYPE)
 FRAMESIZE = struct.calcsize(FRAMEHEADERTYPE)+INSSIZE+GPSSIZE+OBDSIZE+DMISIZE
 
-class sHeader():
+class SHeader():
     def __init__(self, header):
         # parsing header
         if len(header) is not HEADERSIZE:
@@ -72,7 +81,7 @@ class sHeader():
             print ('Header is not exist.')
         
 
-class sINSData():
+class SINSData():
     def __init__(self, INS):
         # parsing INS data
         if len(INS) is not INSSIZE:
@@ -109,7 +118,7 @@ class sINSData():
     def getTimeAsList(self):
         return self.qwGpsTime
 
-class sGPSData():
+class SGPSData():
     def __init__(self, GPS):
         # parsing GPS data
         if len(GPS) is not GPSSIZE:
@@ -141,7 +150,7 @@ class sGPSData():
         except AttributeError:
             return 'INS Time is not valid.'
 
-class sOBDData():
+class SOBDData():
     def __init__(self, OBD):
         # parsing OBD data
         if len(OBD) is not OBDSIZE:
@@ -181,7 +190,7 @@ class sOBDData():
             self.qwGpsTime = OBDData[20:27]
             self.frameStatus = True
 
-class sDMIData():
+class SDMIData():
     def __init__(self, DMI):
         # parsing DMI data
         if len(DMI) is not DMISIZE:
@@ -198,7 +207,7 @@ class sDMIData():
             self.qwGpsTime = DMIData[6:13]
             self.frameStatus = True
 
-class sDataFrame():
+class SDataFrame():
     def __init__(self, data):
         # read data frame
         if len(data) != FRAMESIZE:
@@ -208,14 +217,14 @@ class sDataFrame():
             dataFrameHeader = struct.unpack(FRAMEHEADERTYPE, data[0:FRAMEHEADERSIZE])
             self.sequenceCount = dataFrameHeader[0]
             self.saveInterval = dataFrameHeader[1]
-            self.INSData = sINSData(data[FRAMEHEADERSIZE:FRAMEHEADERSIZE+INSSIZE])                                                      # read 64 bytes for INS data
-            self.GPSData = sGPSData(data[FRAMEHEADERSIZE+INSSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE])                                      # read 96 bytes for GPS data
-            # self.OBDData = sOBDData(data[FRAMEHEADERSIZE+INSSIZE+GPSSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE])                      # read 40 bytes for OBD data
-            self.OBDData = sOBDData(data[FRAMEHEADERSIZE+INSSIZE+GPSSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE])                      # read 64 bytes for OBD data
-            self.DMIData = sDMIData(data[FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE+DMISIZE])      # read 32 bytes for DMI data
+            self.INSData = SINSData(data[FRAMEHEADERSIZE:FRAMEHEADERSIZE+INSSIZE])                                                      # read 64 bytes for INS data
+            self.GPSData = SGPSData(data[FRAMEHEADERSIZE+INSSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE])                                      # read 96 bytes for GPS data
+            # self.OBDData = SOBDData(data[FRAMEHEADERSIZE+INSSIZE+GPSSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE])                      # read 40 bytes for OBD data
+            self.OBDData = SOBDData(data[FRAMEHEADERSIZE+INSSIZE+GPSSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE])                      # read 64 bytes for OBD data
+            self.DMIData = SDMIData(data[FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE:FRAMEHEADERSIZE+INSSIZE+GPSSIZE+OBDSIZE+DMISIZE])      # read 32 bytes for DMI data
             self.frameStatus = True
 
-class sObjDataFrame():
+class SObjDataFrame():
     def __init__(self, frameIndex, dataType, dataSize, objCount, timestamp, objects):
         self.frameIndex = frameIndex
         self.dataType = dataType
@@ -236,14 +245,14 @@ class sObjDataFrame():
         except AttributeError:
             return 'GPS Time is not valid.'
 
-class cMasterDB():
+class CMasterDB():
     def __init__(self, settings, fileName):
         self.settings = settings
         # open file
         dataFile = open(fileName, 'rb')
 
         # read header and register
-        self.header = sHeader(dataFile.read(struct.calcsize(HEADERTYPE)))    # read 64 bytes for header
+        self.header = SHeader(dataFile.read(struct.calcsize(HEADERTYPE)))    # read 64 bytes for header
 
         # read data frame and register
         self.dataFrames = []
@@ -252,7 +261,7 @@ class cMasterDB():
             if frameData == b'':
                 break
 
-            frame = sDataFrame(frameData)
+            frame = SDataFrame(frameData)
             if frame.frameStatus is True:
                 self.dataFrames.append(frame)        
 
@@ -340,13 +349,13 @@ class cMasterDB():
         return self.dataFrames[matched_index]
         
 
-class cReferenceDB():
+class CReferenceDB():
     def __init__(self, fileName):
         # open file
         dataFile = open(fileName, 'rb')
 
         # read header and register
-        self.header = sHeader(dataFile.read(struct.calcsize(HEADERTYPE)))    # read 64 bytes for header
+        self.header = SHeader(dataFile.read(struct.calcsize(HEADERTYPE)))    # read 64 bytes for header
 
         # read data frame and register
         self.dataFrames = []
@@ -358,7 +367,7 @@ class cReferenceDB():
                 break
             dataFrameHeader = struct.unpack(FRAMEHEADERTYPE, frameData[0:FRAMEHEADERSIZE])
             
-            frame = sGPSData(frameData[FRAMEHEADERSIZE:])
+            frame = SGPSData(frameData[FRAMEHEADERSIZE:])
             if frame.frameStatus is True:
                 frame.sequenceCount = dataFrameHeader[0]
                 frame.saveInterval = dataFrameHeader[1]
@@ -398,28 +407,30 @@ class cReferenceDB():
                 timeGap = abs(masterTimestamp - dataTimestamp)
         return self.dataFrames[matched_index]
 
-class cObjectDB():
-    def __init__(self, settings, fileName):
-        self.settings = settings
+class CObjectDB():
+    def __init__(self, fileName, path):
+        self.path = path
+        self.EOF = False
+        self.index = 0
 
         # open file
-        dataFile = open(fileName, 'rb')
-        print ('open file: %s' % (fileName))
+        self.dataFile = open(fileName, 'rb')
+        # print ('open file: %s' % (fileName))
 
         # read header and register
-        header = dataFile.read(struct.calcsize('I6BHI'))
-        header = struct.unpack('I6BHI', header)
+        header = self.dataFile.read(struct.calcsize('I6BHI'))
+        self.header = struct.unpack('I6BHI', header)
         
-        self.dataSaveVersion = header[0]   # read 16 bytes for header
-        self.dataSaveTime = header[1:8]
-        self.totalSavedDataCount = header[8]
+        self.dataSaveVersion = self.header[0]   # read 16 bytes for header
+        self.dataSaveTime = self.header[1:8]
+        self.totalSavedDataCount = self.header[8]
         
         # read data frame and register
         self.dataFrames = []
         # for frameData in iter(lambda: dataFile.read(FRAMEHEADERSIZE+GPSSIZE), ''):
-        
+    
         for i in range(self.totalSavedDataCount):
-            frameHeader = dataFile.read(struct.calcsize('4H6BH'))
+            frameHeader = self.dataFile.read(struct.calcsize('4H6BH'))
             if frameHeader == b'':
                 break
             frameHeader = struct.unpack('4H6BH', frameHeader)
@@ -434,48 +445,62 @@ class cObjectDB():
             for j in range(objCount):                
                 # objData = dataFile.read(struct.calcsize('30f'))
                 # objData = struct.unpack('30f', objData)
-                objData = dataFile.read(struct.calcsize('16f'))
+                objData = self.dataFile.read(struct.calcsize('16f'))
                 objData = struct.unpack('16f', objData)
                 objects.append(objData)
             
-            self.dataFrames.append(sObjDataFrame(frameIndex, dataType, dataSize, objCount, timestamp, objects))
-
+            self.dataFrames.append(SObjDataFrame(frameIndex, dataType, dataSize, objCount, timestamp, objects))
+        
         # file close
-        dataFile.close()
+        self.dataFile.close()
 
     def printHeader(self):
         print('Data save version : 0x%08X' % (self.dataSaveVersion))
         print('Data Save Time : %s' % (self.getTime(9)))
         print('Total Saved Data Count : %d' %(self.totalSavedDataCount))
     
-    def convert(self, path):
-        count = 1
+
+    def getNextFrame(self):
+        
+        if self.index >= len(self.dataFrames)-1:
+            self.EOF = True    
+        else:
+            self.index = self.index+1
+        
+        return self.dataFrames[self.index]
+    
+    
+    def convertAll(self):
+        index = 0
+        for frame in self.dataFrames:
+            self.convert(frame, self.path, index)
+            index = index+1
+
+    def convert(self, frame, path, cnt):
         if not os.path.isdir(path):
             os.mkdir(path)
         
-        logFile = open(path+'\\ObjectDB.txt', 'w')
-        for frame in self.dataFrames:
-            # frame index | sequence number | object id | class id | cx | cy | cz | w | l | h | orientation |
-            seqNum = 1
-            for i in range(30):
-                try:
-                    o = frame.objects[i]                
-                    writeData = '%04d %d %d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n' % (frame.frameIndex, seqNum, o[1], o[9], o[2], o[3], o[4], o[5], o[6], o[7], o[8])
+        logFile = open(path+'\\%06d.txt' % cnt, 'w')
+        # frame index | sequence number | object id | class id | cx | cy | cz | w | l | h | orientation |
+        seqNum = 1
+        for o in frame.objects:
+            try:             
+                writeData = '%04d %d %d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n' % (frame.frameIndex, seqNum, o[1], o[9], o[2], o[3], o[4], o[5], o[6], o[7], o[8])
 
-                except IndexError as e1:
-                    writeData = '%04d %d 0 0 0 0 0 0 0 0\n' % (frame.frameIndex, seqNum)
-                
-                seqNum +=1
-                logFile.write(writeData)                
+            except IndexError as e1:
+                writeData = '%04d %d 0 0 0 0 0 0 0 0\n' % (frame.frameIndex, seqNum)
+            
+            seqNum +=1
+            logFile.write(writeData)                
 
-                # print (writeData)
-        
-                # print(writeData)
-                # count = count + 1
+            # print (writeData)
+    
+            # print(writeData)
+            # count = count + 1
 
-                # frame index | object id | cx | cy | cz | orientation |          
-                # distance = sqrt(o[2]*o[2] + o[3]*o[3])
-                # writeData = '%04d %.6f %.6f %.6f %.6f\n' % (frame.frameIndex, o[2], o[3], distance, o[8])
+            # frame index | object id | cx | cy | cz | orientation |          
+            # distance = sqrt(o[2]*o[2] + o[3]*o[3])
+            # writeData = '%04d %.6f %.6f %.6f %.6f\n' % (frame.frameIndex, o[2], o[3], distance, o[8])
         logFile.close()
                     
         
@@ -490,11 +515,3 @@ class cObjectDB():
             return '%02d%02d%02d%03d' % (self.dataSaveTime[3]+t, self.dataSaveTime[4], self.dataSaveTime[5], self.dataSaveTime[6])
         except AttributeError:
             return 'GPS Time is not valid.'
-
-# obj = cObjectDB('201703M08D15H32m23s\\Object_00_201703M08D15H32m23s.dat')
-# obj.convert('C:\\ConvertedData')
-
-# masterDB = cMasterDB('NsuMDB_07_201703M08D15H32m23s.dat')
-# masterDB.convert('C:\\ConvertedData')
-# obj = cObjectDB('Object_03M23D10H48m58s.dat')
-# obj.convert('C:\\ConvertedData')
